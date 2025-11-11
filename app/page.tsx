@@ -18,6 +18,11 @@ const EMOTION_OPTIONS = [
   { label: '😐 Neutral', value: 'neutral' },
 ];
 
+const ROLE_OPTIONS = [
+  { label: 'Student', value: 'student' },
+  { label: 'Faculty Member', value: 'faculty' },
+];
+
 // Your API endpoint
 const API_URL = 'http://127.0.0.1:8000/api/v1/chat';
 
@@ -35,9 +40,12 @@ export default function ChatPage() {
     },
   ]);
   const [awaitingEmotion, setAwaitingEmotion] = useState(true);
+  const [awaitingRole, setAwaitingRole] = useState(false); // <-- New state for role modal
+  const [selectedEmotion, setSelectedEmotion] = useState(''); // <-- New state to store emotion
+  const [userRole, setUserRole] = useState(''); // <-- New state to store role
   const [inputText, setInputText] = useState('');
   const [isBotTyping, setIsBotTyping] = useState(false);
-  const [sessionId, setSessionId] = useState(''); // <-- New state for session
+  const [sessionId, setSessionId] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Generate a new session ID on initial load
@@ -67,7 +75,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInputText('');
     setIsBotTyping(true);
-    setAwaitingEmotion(false); // User sent a text message
+    setAwaitingEmotion(false);
 
     try {
       const response = await fetch(API_URL, {
@@ -77,7 +85,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: inputText,
-          session_id: sessionId, // Use the session ID from state
+          session_id: sessionId,
         }),
       });
 
@@ -86,23 +94,18 @@ export default function ChatPage() {
       }
 
       const data = await response.json();
-
-      // --- IMPORTANT ---
-      // I'm assuming your API returns { "response": "..." }
-      // If it's different (e.g., { "message": "..." }), change data.response below
       const botMsg: Message = {
         id: Date.now() + 1,
         sender: 'bot',
-        text: data.response,
+        text: data.response, // Assuming API returns { "response": "..." }
       };
-
       setMessages((prev) => [...prev, botMsg]);
     } catch (error) {
       console.error('Failed to fetch chat response:', error);
       const errorMsg: Message = {
         id: Date.now() + 1,
         sender: 'bot',
-        text: "Sorry, I'm having trouble connecting to my brain. Please try again later.",
+        text: "Sorry, I'm having trouble connecting. Please try again later.",
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -110,20 +113,31 @@ export default function ChatPage() {
     }
   };
 
-  // Converted to async function
-  const handleEmotionSelect = async (emotion: string) => {
+  // Step 1: User selects emotion
+  const handleEmotionSelect = (emotion: string) => {
     const emotionLabel =
       EMOTION_OPTIONS.find((e) => e.value === emotion)?.label || emotion;
 
+    setSelectedEmotion(emotionLabel); // <-- Store the emotion
+    setAwaitingEmotion(false); // <-- Close emotion modal
+    setAwaitingRole(true); // <-- Open role modal
+  };
+
+  // Step 2: User selects role, then we send the first message
+  const handleRoleSelect = async (role: string) => {
+    setUserRole(role); // <-- Store the role
+    setAwaitingRole(false); // <-- Close role modal
+
+    // Now, add the user's emotion message to the chat
     const userMsg: Message = {
       id: Date.now(),
       sender: 'user',
-      text: emotionLabel,
+      text: selectedEmotion, // <-- Use the stored emotion
     };
     setMessages((prev) => [...prev, userMsg]);
-    setAwaitingEmotion(false);
     setIsBotTyping(true);
 
+    // And send the emotion to the API
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
@@ -131,8 +145,10 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: emotionLabel, // Send the emotion label as the message
-          session_id: sessionId, // Use the session ID from state
+          message: selectedEmotion, // Send the emotion label as the message
+          session_id: sessionId,
+          // You could also send the role if your API supports it:
+          // role: role,
         }),
       });
 
@@ -141,27 +157,23 @@ export default function ChatPage() {
       }
 
       const data = await response.json();
-
-      // --- IMPORTANT ---
-      // I'm assuming your API returns { "response": "..." }
-      // If it's different (e.g., { "message": "..." }), change data.response below
       const botMsg: Message = {
         id: Date.now() + 1,
         sender: 'bot',
-        text: data.response,
+        text: data.response, // Assuming API returns { "response": "..." }
       };
-
       setMessages((prev) => [...prev, botMsg]);
     } catch (error) {
       console.error('Failed to fetch chat response:', error);
       const errorMsg: Message = {
         id: Date.now() + 1,
         sender: 'bot',
-        text: "Sorry, I'm having trouble connecting to my brain. Please try again later.",
+        text: "Sorry, I'm having trouble connecting. Please try again later.",
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsBotTyping(false);
+      setSelectedEmotion(''); // Clear stored emotion
     }
   };
 
@@ -179,12 +191,10 @@ export default function ChatPage() {
         text: 'Before we begin, how are you feeling right now?',
       },
     ]);
-    setAwaitingEmotion(true);
-    setSessionId(`luma-session-${Date.now()}`); // <-- Generate new session ID
+    setAwaitingEmotion(true); // <-- Start over at emotion modal
+    setAwaitingRole(false); // <-- Ensure role modal is closed
+    setSessionId(`luma-session-${Date.now()}`);
   };
-
-  // This function is no longer needed as the backend handles logic
-  // const generateBotResponse = (input: string): string => { ... };
 
   return (
     // Main container: full screen, flex column
@@ -232,6 +242,46 @@ export default function ChatPage() {
                     key={opt.value}
                     onClick={() => handleEmotionSelect(opt.value)}
                     className="w-full px-4 py-4 bg-blue-50 text-blue-700 rounded-xl text-md font-medium hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-all duration-200"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- NEW: Role Selector Modal (Minimalistic) --- */}
+      <AnimatePresence>
+        {awaitingRole && (
+          <motion.div
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 max-w-xs w-full"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{
+                delay: 0.1,
+                type: 'spring',
+                stiffness: 260,
+                damping: 20,
+              }}
+            >
+              <h2 className="text-xl font-semibold text-blue-900 text-center mb-6">
+                Are you a...
+              </h2>
+              {/* Vertical list for role buttons */}
+              <div className="flex flex-col gap-3">
+                {ROLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleRoleSelect(opt.value)}
+                    className="w-full px-4 py-3 bg-blue-50 text-blue-700 rounded-xl text-md font-medium hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-all duration-200"
                   >
                     {opt.label}
                   </button>
@@ -301,7 +351,8 @@ export default function ChatPage() {
       <div className="mt-auto border-t border-blue-100 bg-white/90 backdrop-blur-sm sticky bottom-0 z-10">
         <div className="max-w-4xl mx-auto w-full p-4">
           <AnimatePresence>
-            {!awaitingEmotion && (
+            {/* Show input bar ONLY if NOT awaiting emotion OR role */}
+            {!awaitingEmotion && !awaitingRole && (
               <motion.form
                 onSubmit={handleSendMessage}
                 className="flex items-center gap-3"
