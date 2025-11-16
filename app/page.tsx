@@ -2,8 +2,55 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { FaRobot, FaPaperPlane, FaPlus } from 'react-icons/fa';
+// Removed: import { FaRobot, FaPaperPlane, FaPlus } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// --- Inline SVG Icons ---
+
+// SVG for the Bot Avatar (FaRobot replacement)
+const RobotIcon = (props: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={props.className || 'w-4 h-4'}
+  >
+    <path
+      fillRule="evenodd"
+      d="M6.75 5.25a.75.75 0 0 1 .75-.75h9a.75.75 0 0 1 .75.75v5.72a2.25 2.25 0 0 1-.689 1.637L15 15.253V18a2.25 2.25 0 0 1-2.25 2.25h-1.5A2.25 2.25 0 0 1 9 18v-2.747l-2.561-2.636A2.25 2.25 0 0 1 5.25 10.97V5.25Zm8.575 4.773a.75.75 0 0 0-1.144-.094L12 9.47l-1.181.668a.75.75 0 0 0-1.144.094L8.25 9.75a.75.75 0 0 0-.75.75v1.5a.75.75 0 0 0 .75.75h7.5a.75.75 0 0 0 .75-.75v-1.5a.75.75 0 0 0-.75-.75h-1.075Z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
+// SVG for the Send Button (FaPaperPlane replacement)
+const PaperPlaneIcon = (props: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={props.className || 'w-5 h-5'}
+  >
+    <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 10.355 10.355 0 0 0 18.232-6.538 10.355 10.355 0 0 0-18.232-6.538Z" />
+  </svg>
+);
+
+// SVG for the New Conversation Button (FaPlus replacement)
+const PlusIcon = (props: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={props.className || 'w-5 h-5'}
+  >
+    <path
+      fillRule="evenodd"
+      d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+// --- End Inline SVG Icons ---
 
 type Message = {
   id: number;
@@ -40,9 +87,8 @@ export default function ChatPage() {
     },
   ]);
   const [awaitingEmotion, setAwaitingEmotion] = useState(true);
-  const [awaitingRole, setAwaitingRole] = useState(false); // <-- New state for role modal
-  const [selectedEmotion, setSelectedEmotion] = useState(''); // <-- New state to store emotion
-  const [userRole, setUserRole] = useState(''); // <-- New state to store role
+  const [awaitingRoleInChat, setAwaitingRoleInChat] = useState(false); // <-- NEW state for inline role selection
+  const [selectedEmotion, setSelectedEmotion] = useState(''); // <-- Stores the selected emotion label
   const [inputText, setInputText] = useState('');
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [sessionId, setSessionId] = useState('');
@@ -59,9 +105,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isBotTyping]);
+  }, [messages, isBotTyping, awaitingRoleInChat]); // Added awaitingRoleInChat to dependencies
 
-  // Converted to async function
+  // Standard message handler (used after initial flow is complete)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || isBotTyping) return;
@@ -75,7 +121,6 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInputText('');
     setIsBotTyping(true);
-    setAwaitingEmotion(false);
 
     try {
       const response = await fetch(API_URL, {
@@ -113,31 +158,53 @@ export default function ChatPage() {
     }
   };
 
-  // Step 1: User selects emotion
-  const handleEmotionSelect = (emotion: string) => {
+  // Step 1: User selects emotion (Closes modal, prompts for role in chat)
+  const handleEmotionSelect = (emotionValue: string) => {
     const emotionLabel =
-      EMOTION_OPTIONS.find((e) => e.value === emotion)?.label || emotion;
+      EMOTION_OPTIONS.find((e) => e.value === emotionValue)?.label || emotionValue;
 
-    setSelectedEmotion(emotionLabel); // <-- Store the emotion
+    setSelectedEmotion(emotionLabel); // <-- Store the emotion label
     setAwaitingEmotion(false); // <-- Close emotion modal
-    setAwaitingRole(true); // <-- Open role modal
+
+    // Add a bot message prompting for the role
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: 'Thanks for sharing. To personalize your support, could you tell me your role?',
+      },
+    ]);
+
+    setAwaitingRoleInChat(true); // <-- Trigger the inline role selection buttons
   };
 
-  // Step 2: User selects role, then we send the first message
-  const handleRoleSelect = async (role: string) => {
-    setUserRole(role); // <-- Store the role
-    setAwaitingRole(false); // <-- Close role modal
+  // Step 2: User selects role in chat (Builds combined message, sends to API)
+  const handleRoleSelectInChat = async (roleValue: string) => {
+    if (!selectedEmotion) return; // Guard: ensure emotion is selected
 
-    // Now, add the user's emotion message to the chat
+    // Remove emojis from emotion label for a cleaner message string
+    const cleanEmotion = selectedEmotion.replace(/[\uD800-\uDBFF\uDC00-\uDFFF]/g, '').trim();
+    
+    // Construct the specific message format requested by the user
+    // e.g., "im student, right now I'm feeling "Happy""
+    const roleText = roleValue === 'student' ? 'a student' : 'a faculty member';
+    const finalUserMessage = `im ${roleText}, right now I'm feeling "${cleanEmotion}"`;
+
+    // 1. Display the constructed message as the user's message
     const userMsg: Message = {
       id: Date.now(),
       sender: 'user',
-      text: selectedEmotion, // <-- Use the stored emotion
+      text: finalUserMessage,
     };
     setMessages((prev) => [...prev, userMsg]);
+
+    // 2. Reset states and show typing indicator
+    setAwaitingRoleInChat(false); // Stop showing role options
+    setSelectedEmotion(''); // Clear stored emotion
     setIsBotTyping(true);
 
-    // And send the emotion to the API
+    // 3. Send the combined message to the API
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
@@ -145,10 +212,8 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: selectedEmotion, // Send the emotion label as the message
+          message: finalUserMessage, // Send the combined string
           session_id: sessionId,
-          // You could also send the role if your API supports it:
-          // role: role,
         }),
       });
 
@@ -173,7 +238,6 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsBotTyping(false);
-      setSelectedEmotion(''); // Clear stored emotion
     }
   };
 
@@ -192,7 +256,8 @@ export default function ChatPage() {
       },
     ]);
     setAwaitingEmotion(true); // <-- Start over at emotion modal
-    setAwaitingRole(false); // <-- Ensure role modal is closed
+    setAwaitingRoleInChat(false); // <-- Ensure inline role selection is closed
+    setSelectedEmotion(''); // Clear any stored emotion
     setSessionId(`luma-session-${Date.now()}`);
   };
 
@@ -208,7 +273,8 @@ export default function ChatPage() {
           title="New conversation"
           aria-label="New conversation"
         >
-          <FaPlus className="text-lg" />
+          {/* Using PlusIcon component instead of FaPlus */}
+          <PlusIcon className="w-5 h-5" />
         </button>
       </div>
 
@@ -252,46 +318,6 @@ export default function ChatPage() {
         )}
       </AnimatePresence>
 
-      {/* --- NEW: Role Selector Modal (Minimalistic) --- */}
-      <AnimatePresence>
-        {awaitingRole && (
-          <motion.div
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 max-w-xs w-full"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{
-                delay: 0.1,
-                type: 'spring',
-                stiffness: 260,
-                damping: 20,
-              }}
-            >
-              <h2 className="text-xl font-semibold text-blue-900 text-center mb-6">
-                Are you a...
-              </h2>
-              {/* Vertical list for role buttons */}
-              <div className="flex flex-col gap-3">
-                {ROLE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleRoleSelect(opt.value)}
-                    className="w-full px-4 py-3 bg-blue-50 text-blue-700 rounded-xl text-md font-medium hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-all duration-200"
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Messages Area: Takes remaining space, scrolls */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-4xl mx-auto w-full pt-20 pb-28">
         {messages.map((msg) => (
@@ -315,7 +341,8 @@ export default function ChatPage() {
                     animate={{ scale: [1, 1.05, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
-                    <FaRobot className="text-white text-sm" />
+                    {/* Using RobotIcon component instead of FaRobot */}
+                    <RobotIcon className="text-white text-sm" />
                   </motion.div>
                 )}
                 <div>
@@ -325,6 +352,34 @@ export default function ChatPage() {
             </div>
           </div>
         ))}
+
+        {/* --- NEW: Inline Role Selection Buttons --- */}
+        <AnimatePresence>
+          {awaitingRoleInChat && (
+            <motion.div
+              className="flex justify-start w-full"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ delay: 0.1 }}
+            >
+              <div className="max-w-[85%]">
+                <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                  {ROLE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleRoleSelectInChat(opt.value)}
+                      className="px-5 py-3 bg-white border border-blue-300 text-blue-800 rounded-xl text-sm font-medium hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-all duration-200 shadow-sm whitespace-nowrap"
+                      disabled={isBotTyping}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Bot Typing Indicator */}
         {isBotTyping && (
@@ -351,8 +406,8 @@ export default function ChatPage() {
       <div className="mt-auto border-t border-blue-100 bg-white/90 backdrop-blur-sm sticky bottom-0 z-10">
         <div className="max-w-4xl mx-auto w-full p-4">
           <AnimatePresence>
-            {/* Show input bar ONLY if NOT awaiting emotion OR role */}
-            {!awaitingEmotion && !awaitingRole && (
+            {/* Show input bar ONLY if NOT awaiting emotion OR role in chat */}
+            {!awaitingEmotion && !awaitingRoleInChat && (
               <motion.form
                 onSubmit={handleSendMessage}
                 className="flex items-center gap-3"
@@ -374,7 +429,8 @@ export default function ChatPage() {
                   className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-full disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-500/20"
                   aria-label="Send message"
                 >
-                  <FaPaperPlane className="w-5 h-5" />
+                  {/* Using PaperPlaneIcon component instead of FaPaperPlane */}
+                  <PaperPlaneIcon className="w-5 h-5" />
                 </button>
               </motion.form>
             )}
